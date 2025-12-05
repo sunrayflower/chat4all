@@ -1,0 +1,474 @@
+// Chat4All v2 - gRPC Service Definition
+// Plataforma de Comunicação Ubíqua com gRPC, Kafka e WebSockets
+// Versão: 2.0
+// Data: 2025-12-05
+
+syntax = "proto3";
+
+package chat4all.v1;
+
+option go_package = "github.com/chat4all/v1;chat4allv1";
+option java_multiple_files = true;
+option java_package = "com.chat4all.v1";
+option java_outer_classname = "Chat4AllProto";
+option python_package = "chat4all.v1";
+
+// ============================================================================
+// 1. AUTENTICAÇÃO E TOKENS
+// ============================================================================
+
+message TokenRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message TokenResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 expires_in = 3;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RegisterRequest {
+  string username = 1;
+  string full_name = 2;
+  string email = 3;
+  string password = 4;
+}
+
+message RegisterResponse {
+  string user_id = 1;
+  string username = 2;
+  string message = 3;
+}
+
+// ============================================================================
+// 2. CONVERSAS (Conversations)
+// ============================================================================
+
+message Conversation {
+  string id = 1;
+  string type = 2;  // "private" ou "group"
+  string name = 3;
+  string created_by_id = 4;
+  int64 created_at = 5;  // Unix timestamp
+  int64 updated_at = 6;
+  map<string, string> metadata = 7;
+  int32 member_count = 8;
+}
+
+message CreateConversationRequest {
+  string type = 1;  // "private" ou "group"
+  string name = 2;
+  repeated string member_ids = 3;
+  map<string, string> metadata = 4;
+}
+
+message CreateConversationResponse {
+  string id = 1;
+  string type = 2;
+  string name = 3;
+  int64 created_at = 4;
+  string message = 5;
+}
+
+message ListConversationsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string filter = 3;  // opcional
+}
+
+message ListConversationsResponse {
+  int32 count = 1;
+  repeated Conversation conversations = 2;
+  bool has_next = 3;
+}
+
+message GetConversationRequest {
+  string conversation_id = 1;
+}
+
+// ============================================================================
+// 3. MENSAGENS
+// ============================================================================
+
+message Message {
+  string id = 1;
+  string conversation_id = 2;
+  string sender_id = 3;
+  string sender_username = 4;
+  int32 sequence_number = 5;
+  string message_type = 6;  // "text", "file", "system"
+  string payload_text = 7;
+  string file_metadata_id = 8;  // se applicável
+  repeated string channels_requested = 9;  // ["whatsapp", "instagram", etc]
+  int64 sent_at = 10;  // Unix timestamp
+  map<string, string> metadata = 11;
+}
+
+message SendMessageRequest {
+  string conversation_id = 1;
+  string message_type = 2;  // "text" ou "file"
+  string payload_text = 3;
+  repeated string channels_requested = 4;  // ["whatsapp", "instagram", "all"]
+  string file_metadata_id = 5;  // se message_type == "file"
+  map<string, string> metadata = 6;
+}
+
+message SendMessageResponse {
+  string status = 1;  // "accepted", "rejected"
+  string message_id = 2;
+  Message message = 3;
+  string error_message = 4;
+}
+
+message GetMessageRequest {
+  string message_id = 1;
+}
+
+message ListMessagesRequest {
+  string conversation_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  int64 since_timestamp = 4;  // opcional, para paginação por timestamp
+}
+
+message ListMessagesResponse {
+  int32 count = 1;
+  repeated Message messages = 2;
+  bool has_next = 3;
+}
+
+// ============================================================================
+// 4. STATUS DE ENTREGA
+// ============================================================================
+
+message MessageStatus {
+  string id = 1;
+  string message_id = 2;
+  string recipient_id = 3;
+  string recipient_username = 4;
+  string channel_type = 5;  // "whatsapp", "instagram", "internal", etc
+  string status = 6;  // "SENT", "DELIVERED", "READ", "FAILED"
+  int64 status_timestamp = 7;
+  string error_message = 8;
+}
+
+message GetMessageStatusRequest {
+  string message_id = 1;
+}
+
+message GetMessageStatusResponse {
+  repeated MessageStatus statuses = 1;
+}
+
+message UpdateMessageStatusRequest {
+  string message_id = 1;
+  string recipient_id = 2;
+  string channel_type = 3;
+  string status = 4;
+  string error_message = 5;
+}
+
+message UpdateMessageStatusResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ============================================================================
+// 5. UPLOAD DE ARQUIVOS (Resumible Upload)
+// ============================================================================
+
+message InitiateFileUploadRequest {
+  string file_name = 1;
+  int64 file_size = 2;
+  string mime_type = 3;
+  string checksum = 4;  // SHA256
+}
+
+message InitiateFileUploadResponse {
+  string file_id = 1;
+  string upload_url = 2;  // presigned URL para S3/MinIO
+  int64 chunk_size = 3;
+  string message = 4;
+}
+
+message CompleteFileUploadRequest {
+  string file_id = 1;
+  string checksum = 2;  // SHA256 para verificação
+}
+
+message CompleteFileUploadResponse {
+  string file_id = 1;
+  string status = 2;
+  string object_storage_url = 3;
+  string message = 4;
+}
+
+message FileMetadata {
+  string id = 1;
+  string file_name = 2;
+  int64 file_size = 3;
+  string mime_type = 4;
+  string checksum = 5;
+  string object_storage_url = 6;
+  string upload_status = 7;
+  int64 uploaded_at = 8;
+  map<string, string> metadata = 9;
+}
+
+// ============================================================================
+// 6. MEMBERS E PERMISSIONS
+// ============================================================================
+
+message ConversationMember {
+  string id = 1;
+  string conversation_id = 2;
+  string user_id = 3;
+  string username = 4;
+  int64 joined_at = 5;
+  bool is_admin = 6;
+  string last_read_message_id = 7;
+}
+
+message AddMemberRequest {
+  string conversation_id = 1;
+  string user_id = 2;
+}
+
+message AddMemberResponse {
+  bool success = 1;
+  ConversationMember member = 2;
+  string message = 3;
+}
+
+message RemoveMemberRequest {
+  string conversation_id = 1;
+  string user_id = 2;
+}
+
+message RemoveMemberResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ListMembersRequest {
+  string conversation_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message ListMembersResponse {
+  int32 count = 1;
+  repeated ConversationMember members = 2;
+}
+
+// ============================================================================
+// 7. WEBHOOK E EVENTS
+// ============================================================================
+
+message WebhookEvent {
+  string id = 1;
+  string event_type = 2;  // "message_received", "status_update", "user_online", etc
+  string connector_type = 3;  // "whatsapp", "instagram", "telegram"
+  int64 timestamp = 4;
+  map<string, string> data = 5;
+}
+
+message ProcessWebhookRequest {
+  string connector_type = 1;
+  string event_type = 2;
+  map<string, string> payload = 3;
+  map<string, string> headers = 4;
+}
+
+message ProcessWebhookResponse {
+  bool success = 1;
+  string message = 2;
+  string webhook_id = 3;
+}
+
+// ============================================================================
+// 8. CONNECTOR MANAGEMENT
+// ============================================================================
+
+message ConnectorConfig {
+  string id = 1;
+  string connector_type = 2;  // "whatsapp", "instagram", "telegram"
+  bool is_enabled = 3;
+  string status = 4;  // "active", "inactive", "error"
+  string webhook_url = 5;
+  int64 created_at = 6;
+  int64 updated_at = 7;
+  string last_health_check = 8;
+}
+
+message ListConnectorsRequest {
+  bool enabled_only = 1;
+}
+
+message ListConnectorsResponse {
+  repeated ConnectorConfig connectors = 1;
+}
+
+message HealthCheckRequest {
+  string connector_type = 1;
+}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string status = 2;
+  string message = 3;
+  map<string, string> details = 4;
+}
+
+// ============================================================================
+// 9. USER PROFILES
+// ============================================================================
+
+message UserProfile {
+  string id = 1;
+  string username = 2;
+  string full_name = 3;
+  string email = 4;
+  int64 created_at = 5;
+  int64 updated_at = 6;
+  bool is_active = 7;
+}
+
+message GetUserProfileRequest {
+  string user_id = 1;
+}
+
+message UpdateUserProfileRequest {
+  string full_name = 1;
+  string email = 2;
+}
+
+message UpdateUserProfileResponse {
+  bool success = 1;
+  UserProfile user = 2;
+  string message = 3;
+}
+
+// ============================================================================
+// 10. PRESENCE E ONLINE STATUS
+// ============================================================================
+
+message UserPresence {
+  string user_id = 1;
+  string username = 2;
+  bool is_online = 3;
+  int64 last_seen = 4;
+  string current_device = 5;
+}
+
+message GetPresenceRequest {
+  string user_id = 1;
+}
+
+message UpdatePresenceRequest {
+  bool is_online = 1;
+  string device = 2;
+}
+
+message UpdatePresenceResponse {
+  bool success = 1;
+  UserPresence presence = 2;
+}
+
+// ============================================================================
+// 11. ADMIN & MONITORING
+// ============================================================================
+
+message SystemMetrics {
+  int64 total_messages = 1;
+  int64 total_users = 2;
+  int64 active_conversations = 3;
+  int64 uptime_seconds = 4;
+  double cpu_usage = 5;
+  double memory_usage = 6;
+  double disk_usage = 7;
+  map<string, int64> messages_per_channel = 8;
+}
+
+message GetMetricsRequest {
+  string time_window = 1;  // "1h", "24h", "7d"
+}
+
+message GetMetricsResponse {
+  SystemMetrics metrics = 1;
+  int64 timestamp = 2;
+}
+
+// ============================================================================
+// 12. SEARCH
+// ============================================================================
+
+message SearchMessagesRequest {
+  string query = 1;
+  string conversation_id = 2;  // opcional
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message SearchMessagesResponse {
+  int32 total_results = 1;
+  repeated Message messages = 2;
+}
+
+// ============================================================================
+// MAIN SERVICE DEFINITION - gRPC
+// ============================================================================
+
+service Chat4AllService {
+  // Authentication
+  rpc Authenticate(TokenRequest) returns (TokenResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (TokenResponse);
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Conversations
+  rpc CreateConversation(CreateConversationRequest) returns (CreateConversationResponse);
+  rpc ListConversations(ListConversationsRequest) returns (ListConversationsResponse);
+  rpc GetConversation(GetConversationRequest) returns (Conversation);
+
+  // Messages
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+  rpc GetMessage(GetMessageRequest) returns (Message);
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
+  rpc SearchMessages(SearchMessagesRequest) returns (SearchMessagesResponse);
+
+  // Message Status
+  rpc GetMessageStatus(GetMessageStatusRequest) returns (GetMessageStatusResponse);
+  rpc UpdateMessageStatus(UpdateMessageStatusRequest) returns (UpdateMessageStatusResponse);
+
+  // File Upload
+  rpc InitiateFileUpload(InitiateFileUploadRequest) returns (InitiateFileUploadResponse);
+  rpc CompleteFileUpload(CompleteFileUploadRequest) returns (CompleteFileUploadResponse);
+
+  // Members
+  rpc AddMember(AddMemberRequest) returns (AddMemberResponse);
+  rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
+  rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
+
+  // User Profile
+  rpc GetUserProfile(GetUserProfileRequest) returns (UserProfile);
+  rpc UpdateUserProfile(UpdateUserProfileRequest) returns (UpdateUserProfileResponse);
+
+  // Presence
+  rpc GetPresence(GetPresenceRequest) returns (UserPresence);
+  rpc UpdatePresence(UpdatePresenceRequest) returns (UpdatePresenceResponse);
+
+  // Webhooks & Events
+  rpc ProcessWebhook(ProcessWebhookRequest) returns (ProcessWebhookResponse);
+
+  // Connectors
+  rpc ListConnectors(ListConnectorsRequest) returns (ListConnectorsResponse);
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // Monitoring & Admin
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+}

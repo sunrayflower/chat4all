@@ -1,0 +1,74 @@
+# Prometheus Configuration for Chat4All v2
+# Scrape job configuration
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'chat4all-monitor'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files:
+  - 'alert_rules.yml'
+
+scrape_configs:
+  # ========================================================================
+  # Chat4All Backend Metrics
+  # ========================================================================
+  - job_name: 'chat4all-backend'
+    static_configs:
+      - targets: ['localhost:8000']
+        labels:
+          service: 'backend'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+
+  # ========================================================================
+  # Kafka Metrics (via JMX exporter)
+  # ========================================================================
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['localhost:5556']
+        labels:
+          service: 'kafka'
+    scrape_interval: 10s
+
+  # ========================================================================
+  # MongoDB Metrics (via mongodb-exporter)
+  # ========================================================================
+  - job_name: 'mongodb'
+    static_configs:
+      - targets: ['localhost:9216']
+        labels:
+          service: 'mongodb'
+
+  # ========================================================================
+  # Node Exporter (System Metrics)
+  # ========================================================================
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']
+        labels:
+          service: 'system'
+
+  # ========================================================================
+  # Redis Metrics
+  # ========================================================================
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['localhost:6379']
+        labels:
+          service: 'redis'
+
+  # ========================================================================
+  # Prometheus Self
+  # ========================================================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
