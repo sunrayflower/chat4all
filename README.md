@@ -1,9 +1,4 @@
-# Chat4All v2 - Plataforma de Comunicação Ubíqua
-
-**Tecnologias Obrigatórias**: gRPC, Kafka, WebSockets
-
-**Desenvolvido por**: Estudante de Sistemas de Informação - 6º Período  
-**Data**: Dezembro 2025
+# Chat4All - Plataforma de Comunicação Ubíqua
 
 ---
 
