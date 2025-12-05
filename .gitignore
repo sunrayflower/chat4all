@@ -1,0 +1,11 @@
+.env
+*.pb2.py
+*.pb2_grpc.py
+*_pb2/
+__pycache__/
+*.pyc
+*.egg-info/
+mongodb_data/
+redis_data/
+prometheus_data/
+grafana_data/
