@@ -95,6 +95,65 @@ message GetConversationRequest {
 // 3. MENSAGENS
 // ============================================================================
 
+rpc InitiateFileUpload(InitFileUploadRequest) returns (InitFileUploadResponse);
+rpc UploadFileChunk(stream FileChunk) returns (FileChunkAck);
+rpc CompleteFileUpload(CompleteFileUploadRequest) returns (CompleteFileUploadResponse);
+rpc GetFileDownloadURL(GetFileDownloadURLRequest) returns (GetFileDownloadURLResponse);
+
+// Mensagens:
+
+message InitFileUploadRequest {
+  string conversation_id = 1;
+  string filename = 2;
+  int64 file_size = 3;
+  string mime_type = 4;
+}
+
+message InitFileUploadResponse {
+  string upload_id = 1;
+  string file_id = 2;
+  int32 chunk_size = 3;
+  int32 expires_in = 4;
+}
+
+message FileChunk {
+  string upload_id = 1;
+  int32 chunk_number = 2;
+  bytes data = 3;
+  int32 total_chunks = 4;
+}
+
+message FileChunkAck {
+  bool success = 1;
+  string checksum = 2;
+}
+
+message CompleteFileUploadRequest {
+  string upload_id = 1;
+  repeated FileChunkInfo chunks = 2;
+}
+
+message FileChunkInfo {
+  int32 chunk_number = 1;
+  string checksum = 2;
+}
+
+message CompleteFileUploadResponse {
+  string file_id = 1;
+  string status = 2;
+  int64 file_size = 3;
+}
+
+message GetFileDownloadURLRequest {
+  string file_id = 1;
+  int32 expires_in = 2;
+}
+
+message GetFileDownloadURLResponse {
+  string presigned_url = 1;
+  int32 expires_in = 2;
+}
+
 message Message {
   string id = 1;
   string conversation_id = 2;
@@ -116,6 +175,25 @@ message SendMessageRequest {
   repeated string channels_requested = 4;  // ["whatsapp", "instagram", "all"]
   string file_metadata_id = 5;  // se message_type == "file"
   map<string, string> metadata = 6;
+
+  enum MessageType {
+    TEXT = 0;
+    FILE = 1;
+    IMAGE = 2;
+    VIDEO = 3;
+  }
+  
+  MessageType type = 4;
+  string file_id = 5;
+  FileMetadata file_metadata = 6;
+}
+
+message FileMetadata {
+  string filename = 1;
+  string mime_type = 2;
+  int64 file_size = 3;
+  string checksum = 4;
+
 }
 
 message SendMessageResponse {
@@ -124,6 +202,8 @@ message SendMessageResponse {
   Message message = 3;
   string error_message = 4;
 }
+
+
 
 message GetMessageRequest {
   string message_id = 1;

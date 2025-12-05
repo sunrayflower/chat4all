@@ -633,69 +633,52 @@ class Chat4AllServicer:
         }
     
     async def SendMessage(self, request, context):
-        """Send message through gRPC"""
-        # Extract authentication token
+        try:
+            message_id = str(uuid.uuid4())
+        
+        # Validar autenticação
         metadata = dict(context.invocation_metadata())
-        auth_header = metadata.get('authorization', '')
-        token = auth_header.replace('Bearer ', '')
+        token = metadata.get('authorization', '').replace('Bearer ', '')
+        user_id = await self.auth_service.verify_token(token)
         
-        # Verify token
-        payload = verify_jwt_token(token)
-        if not payload:
-            await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Invalid token")
+        # Preparar payload
+        payload = {
+            'id': message_id,
+            'conversation_id': request.conversation_id,
+            'sender_id': user_id,
+            'type': request.type.name if request.type else 'TEXT',
+            'channels': request.channels,
+            'created_at': datetime.utcnow().isoformat()
+        }
         
-        sender_id = payload.get('user_id')
+        if request.type == MessageType.TEXT:
+            payload['text'] = request.text
+        elif request.type in [MessageType.FILE, MessageType.IMAGE, MessageType.VIDEO]:
+            payload['file_id'] = request.file_id
+            payload['file_metadata'] = {
+                'filename': request.file_metadata.filename,
+                'mime_type': request.file_metadata.mime_type,
+                'file_size': request.file_metadata.file_size,
+                'checksum': request.file_metadata.checksum
+            }
         
-        # Get next sequence number
-        messages = self.db.get_conversation_messages(request.conversation_id, limit=1)
-        sequence_number = len(messages) + 1 if messages else 1
+        # Publicar em Kafka
+        await self.kafka_service.send_message_event(payload)
         
-        # Create message
-        message = Message(
-            id=str(uuid.uuid4()),
-            conversation_id=request.conversation_id,
-            sender_id=sender_id,
-            sequence_number=sequence_number,
-            message_type=request.message_type,
-            payload_text=request.payload_text,
-            channels_requested=list(request.channels_requested)
+        # Salvar status
+        await self.db.save_message_status(
+            message_id, 'SENT', user_id
         )
         
-        # Save to MongoDB
-        if not self.db.save_message(message):
-            await context.abort(grpc.StatusCode.INTERNAL, "Failed to save message")
-        
-        # Save initial status as SENT
-        self.db.save_message_status(message.id, sender_id, 'internal', 'SENT')
-        
-        # Publish to Kafka for async processing
-        self.kafka.send_message_event(message)
-        
-        # Notify via WebSocket
-        await ws_manager.broadcast({
-            'type': 'new_message',
-            'message_id': message.id,
-            'conversation_id': message.conversation_id,
-            'sender_id': sender_id,
-            'payload_text': message.payload_text,
-            'timestamp': message.sent_at
-        })
-        
-        # Return response
-        return {
-            'status': 'accepted',
-            'message_id': message.id,
-            'message': {
-                'id': message.id,
-                'conversation_id': message.conversation_id,
-                'sender_id': sender_id,
-                'sequence_number': sequence_number,
-                'message_type': message.message_type,
-                'payload_text': message.payload_text,
-                'channels_requested': message.channels_requested,
-                'sent_at': message.sent_at
-            }
-        }
+        return SendMessageResponse(
+            message_id=message_id,
+            status='SENT',
+            timestamp=int(datetime.utcnow().timestamp() * 1000)
+        )
+    except Exception as e:
+        logger.error(f"Error in SendMessage: {e}")
+        await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(e))
+
     
     async def GetMessage(self, request, context):
         """Get message by ID"""
